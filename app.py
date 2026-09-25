@@ -1,9 +1,10 @@
 
 import streamlit as st
-import streamlit.components.v1 as components
 import altair as alt
+import plotly.graph_objects as go
 import pandas as pd
 import numpy as np
+import requests
 from pathlib import Path
 import html
 
@@ -65,79 +66,42 @@ def metric_color(value, metric):
             return "#f2d17d"
         return "#e7a83b"
 
-def make_guyana_svg(metric="allocated", selected_region=4):
-    # Stylized presentation map for demo purposes. Region labels and hover details included.
-    region_polys = {
-        1: "90,30 205,38 230,145 185,220 110,200 70,115",
-        2: "70,115 110,200 95,300 35,300 28,215",
-        3: "95,300 185,290 220,365 175,440 85,410 35,300",
-        4: "185,290 300,275 335,350 285,425 220,365",
-        5: "230,145 335,155 300,275 185,290 185,220",
-        6: "335,155 445,210 435,340 335,350 300,275",
-        7: "205,38 355,25 420,100 335,155 230,145",
-        8: "355,25 455,55 520,160 445,210 420,100",
-        9: "445,210 555,310 525,455 435,340",
-        10:"285,425 435,340 525,455 490,560 335,545 175,440"
-    }
-    label_positions = {
-        1: (142,116), 2: (70,250), 3: (126,356), 4: (266,348), 5: (255,220),
-        6: (384,270), 7: (320,94), 8: (442,128), 9: (492,335), 10: (350,465)
-    }
-    rows = regional.set_index("region_no").to_dict("index")
-    items = []
-    for rno, pts in region_polys.items():
-        row = rows[rno]
-        fill = metric_color(row[metric], metric)
-        stroke = "#111827" if rno == selected_region else "#ffffff"
-        stroke_width = "4" if rno == selected_region else "2"
-        title = (
-            f"Region {rno} — {row['region']}\n"
-            f"Applications: {fmt_int(row['applications'])}\n"
-            f"Approved: {fmt_int(row['approved'])}\n"
-            f"Allocated: {fmt_int(row['allocated'])}\n"
-            f"Pending: {fmt_int(row['pending_backlog'])}\n"
-            f"Processing: {row['avg_processing_days']} days"
+@st.cache_data
+def load_guyana_regions():
+        url = "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/GUY/ADM1/geoBoundaries-GUY-ADM1_simplified.geojson"
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()
+        return response.json()
+
+def make_guyana_map(metric, selected_region):
+        geojson = load_guyana_regions()
+        display_names = {"Barina-Waini": "Barima-Waini"}
+        map_rows = regional.copy()
+        map_rows["map_region"] = map_rows["region"].replace({"Barima-Waini": "Barina-Waini"})
+        selected_name = map_rows.loc[map_rows["region_no"] == selected_region, "map_region"].iloc[0]
+        colors = ["#f97316", "#e85d04", "#d94801", "#c2410c", "#9a3412", "#7c2d12", "#525252", "#404040", "#262626", "#737373"]
+        figure = go.Figure(go.Choropleth(
+                geojson=geojson,
+                featureidkey="properties.shapeName",
+                locations=map_rows["map_region"],
+                z=map_rows[metric],
+                customdata=map_rows[["region_no", "region", metric]].to_numpy(),
+                colorscale=[[index / (len(colors) - 1), color] for index, color in enumerate(colors)],
+                marker_line_color="#ffffff",
+                marker_line_width=1.5,
+                hovertemplate="<b>Region %{customdata[0]} — %{customdata[1]}</b><br>" + map_metric_label(metric) + ": %{customdata[2]:,.0f}<extra></extra>",
+                showscale=False
+        ))
+        figure.update_traces(selectedpoints=[map_rows.index[map_rows["map_region"] == selected_name].tolist()[0]])
+        figure.update_layout(
+                geo=dict(scope="south america", fitbounds="locations", showframe=False, showcoastlines=True, coastlinecolor="#171717", bgcolor="#ffffff"),
+                height=620,
+                margin=dict(l=0, r=0, t=0, b=0),
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                clickmode="event+select"
         )
-        label_x, label_y = label_positions[rno]
-        region_name = row["region"]
-        region_name = region_name.replace("Essequibo Islands-West Demerara", "Essequibo Is.-W. Dem.")
-        region_name = region_name.replace("Upper Takutu-Upper Essequibo", "Upper Takutu-Essequibo")
-        items.append(f"""
-        <polygon points="{pts}" fill="{fill}" stroke="{stroke}" stroke-width="{stroke_width}" opacity="0.98">
-          <title>{html.escape(title)}</title>
-        </polygon>
-        <text x="{label_x}" y="{label_y}" text-anchor="middle" class="region-no">R{rno}</text>
-        <text x="{label_x}" y="{label_y + 17}" text-anchor="middle" class="region-name">{html.escape(region_name)}</text>
-        """)
-    svg = f"""
-    <div style="background:#fff;border:1px solid #e7e8ea;border-radius:20px;padding:18px;box-shadow:0 10px 26px rgba(31,41,51,.06);">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:10px;">
-        <div>
-          <div style="font-size:12px;font-weight:800;color:#b88a2c;letter-spacing:.18em;text-transform:uppercase;">Guyana regional map</div>
-          <div style="font-size:23px;font-weight:850;color:#1f2933;line-height:1.1;">Color view: {html.escape(map_metric_label(metric))}</div>
-        </div>
-        <div style="font-size:12px;color:#6b7280;text-align:right;max-width:280px;">Region names are shown directly on the map. Hover over any region for details.</div>
-      </div>
-      <svg viewBox="0 0 610 610" width="100%" height="620" role="img" aria-label="Stylized map of Guyana regions">
-        <style>
-          .region-no {{ font: 800 16px Arial, sans-serif; fill: #111827; pointer-events:none; }}
-          .region-name {{ font: 700 10px Arial, sans-serif; fill: #111827; pointer-events:none; }}
-          polygon {{ transition: opacity .15s ease; }}
-          polygon:hover {{ opacity:.82; filter: drop-shadow(0px 5px 5px rgba(0,0,0,.18)); }}
-          .outline {{ fill:none; stroke:#111827; stroke-width:3; opacity:.14; }}
-        </style>
-        <path d="M90 30 L355 25 L455 55 L520 160 L555 310 L525 455 L490 560 L335 545 L85 410 L28 215 Z" class="outline"/>
-        {''.join(items)}
-      </svg>
-      <div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:4px;">
-        <span style="font-size:12px;color:#1e8e5a;font-weight:800;">■ Strong / high</span>
-        <span style="font-size:12px;color:#f2d17d;font-weight:800;">■ Moderate</span>
-        <span style="font-size:12px;color:#e7a83b;font-weight:800;">■ Watch</span>
-        <span style="font-size:12px;color:#c84b31;font-weight:800;">■ Pressure / delay</span>
-      </div>
-    </div>
-    """
-    return svg
+        return figure
 
 def answer_question(q):
     top_alloc = regional.sort_values("allocated", ascending=False).iloc[0]
@@ -160,7 +124,7 @@ def answer_question(q):
 st.markdown('<div class="niota-label">NIOTA LABS</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-title">Ministry Of Housing Intelligence</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">A clean demonstration of how housing applications, approvals, house lot allocations, backlog, and regional readiness can become decision intelligence.</div>', unsafe_allow_html=True)
-st.markdown('<span class="pill">Demo data only</span><span class="pill">Guyana Regions 1–10</span><span class="pill">6–7 minute walkthrough</span>', unsafe_allow_html=True)
+st.markdown('<span class="pill">Demo data only</span><span class="pill">Guyana Regions 1–10</span>', unsafe_allow_html=True)
 
 st.sidebar.markdown('<div class="niota-label">NIOTA LABS</div>', unsafe_allow_html=True)
 st.sidebar.markdown("## Ministry Of Housing Intelligence")
@@ -217,22 +181,38 @@ if page == "Overview":
 
 elif page == "Regional Map":
     st.markdown("### Guyana regional map")
-    st.caption("Use the selector to change what the colors mean. Region names show directly on the map.")
-    metric_choice = st.selectbox(
-        "Color the map by",
-        ["allocated", "approval_rate_pct", "pending_backlog", "avg_processing_days", "allocation_rate_pct"],
-        format_func=map_metric_label,
-        index=0
-    )
-    selected = st.selectbox(
-        "Selected region",
-        regional["region_no"].tolist(),
-        format_func=lambda r: f"Region {int(r)} — {regional.loc[regional.region_no == r, 'region'].iloc[0]}",
-        index=3
-    )
+    st.caption("Click any region on the map to update the detail panel.")
+    control_col, region_col = st.columns([1, 1.8])
+    with control_col:
+        metric_choice = st.selectbox(
+            "Color the map by",
+            ["allocated", "approval_rate_pct", "pending_backlog", "avg_processing_days", "allocation_rate_pct"],
+            format_func=map_metric_label,
+            index=0
+        )
+    with region_col:
+        if "selected_region_map" not in st.session_state:
+            st.session_state["selected_region_map"] = 4
+        selected = st.selectbox(
+            "Select region",
+            regional["region_no"].tolist(),
+            format_func=lambda r: f"Region {int(r)} — {regional.loc[regional.region_no == r, 'region'].iloc[0]}",
+            key="selected_region_map"
+        )
     map_col, detail_col = st.columns([1.25, .75])
     with map_col:
-        components.html(make_guyana_svg(metric_choice, int(selected)), height=760, scrolling=False)
+        map_event = st.plotly_chart(
+            make_guyana_map(metric_choice, int(selected)),
+            use_container_width=True,
+            on_select="rerun",
+            selection_mode="points",
+            key="guyana_regional_map"
+        )
+        if map_event and map_event.selection.points:
+            clicked_region = int(map_event.selection.points[0]["customdata"][0])
+            if clicked_region != selected:
+                st.session_state["selected_region_map"] = clicked_region
+                st.rerun()
     with detail_col:
         row = regional[regional.region_no == selected].iloc[0]
         st.markdown(f"""
