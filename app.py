@@ -77,27 +77,44 @@ def make_guyana_map(metric, selected_region):
     geojson = load_guyana_regions()
     map_rows = regional.copy()
     map_rows["map_region"] = map_rows["region"].replace({"Barima-Waini": "Barina-Waini"})
-    figure = go.Figure()
-    for _, row in map_rows.iterrows():
-        region_color = metric_color(row[metric], metric)
-        figure.add_trace(go.Choropleth(
-            geojson=geojson,
-            featureidkey="properties.shapeName",
-            locations=[row["map_region"]],
-            z=[0.5],
-            zmin=0,
-            zmax=1,
-            colorscale=[[0, region_color], [1, region_color]],
-            customdata=[[int(row["region_no"]), row["region"], row[metric]]],
-            marker_line_color="#171717" if int(row["region_no"]) == selected_region else "#ffffff",
-            marker_line_width=3 if int(row["region_no"]) == selected_region else 1.5,
-            hovertemplate="<b>Region %{customdata[0]} — %{customdata[1]}</b><br>" + map_metric_label(metric) + ": %{customdata[2]:,.0f}<extra></extra>",
-            showscale=False,
-            name=f"Region {int(row['region_no'])}",
-            showlegend=False
-        ))
+    map_rows["color_bin"] = map_rows[metric].apply(
+        lambda value: ["#2e9b67", "#f2d17d", "#e7a83b", "#c84b31"][
+            min(3, int((regional[metric] < value).sum() * 4 / len(regional)))
+        ]
+    )
+    palette = ["#2e9b67", "#f2d17d", "#e7a83b", "#c84b31"]
+    figure = go.Figure(go.Choropleth(
+        geojson=geojson,
+        featureidkey="properties.shapeName",
+        locations=map_rows["map_region"],
+        z=map_rows["color_bin"].map({color: index for index, color in enumerate(palette)}),
+        zmin=0,
+        zmax=3,
+        colorscale=[
+            [0.00, palette[0]], [0.2499, palette[0]],
+            [0.25, palette[1]], [0.4999, palette[1]],
+            [0.50, palette[2]], [0.7499, palette[2]],
+            [0.75, palette[3]], [1.00, palette[3]]
+        ],
+        customdata=map_rows[["region_no", "region", metric]].to_numpy(),
+        marker_line_color="#171717",
+        marker_line_width=1.2,
+        hovertemplate="<b>Region %{customdata[0]} — %{customdata[1]}</b><br>" + map_metric_label(metric) + ": %{customdata[2]:,.0f}<extra></extra>",
+        showscale=False,
+        name="Guyana regions"
+    ))
     figure.update_layout(
-        geo=dict(scope="south america", fitbounds="locations", showframe=False, showcoastlines=True, coastlinecolor="#171717", showland=False, bgcolor="#ffffff"),
+        geo=dict(
+            scope="south america",
+            fitbounds="locations",
+            showframe=False,
+            showcoastlines=True,
+            coastlinecolor="#171717",
+            showland=True,
+            landcolor="#ffffff",
+            bgcolor="#ffffff",
+            projection_type="mercator"
+        ),
         height=620,
         margin=dict(l=0, r=0, t=0, b=0),
         paper_bgcolor="#ffffff",
