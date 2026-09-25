@@ -1,6 +1,7 @@
 
 import streamlit as st
 import streamlit.components.v1 as components
+import altair as alt
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -190,10 +191,17 @@ if page == "Overview":
     left, right = st.columns([1.35, .9])
     with left:
         st.markdown("#### Allocated lots by region")
-        st.bar_chart(
-            regional.sort_values("allocated").set_index("region")[["allocated"]],
-            color="#d95f02"
-        )
+        chart_data = regional.sort_values("allocated").copy()
+        chart = alt.Chart(chart_data).mark_bar(color="#d95f02").encode(
+            x=alt.X(
+                "region:N",
+                sort=chart_data["region"].tolist(),
+                title=None,
+                axis=alt.Axis(labelAngle=-35, labelLimit=500, labelOverlap=False, labelFontWeight=700)
+            ),
+            y=alt.Y("allocated:Q", title="Allocated lots")
+        ).properties(height=380)
+        st.altair_chart(chart, use_container_width=True)
     with right:
         top_region = regional.sort_values("allocated", ascending=False).iloc[0]
         backlog_region = regional.sort_values("pending_backlog", ascending=False).iloc[0]
