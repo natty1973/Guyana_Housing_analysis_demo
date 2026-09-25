@@ -68,40 +68,43 @@ def metric_color(value, metric):
 
 @st.cache_data
 def load_guyana_regions():
-        url = "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/GUY/ADM1/geoBoundaries-GUY-ADM1_simplified.geojson"
-        response = requests.get(url, timeout=30)
-        response.raise_for_status()
-        return response.json()
+    url = "https://github.com/wmgeolab/geoBoundaries/raw/9469f09/releaseData/gbOpen/GUY/ADM1/geoBoundaries-GUY-ADM1_simplified.geojson"
+    response = requests.get(url, timeout=30)
+    response.raise_for_status()
+    return response.json()
 
 def make_guyana_map(metric, selected_region):
-        geojson = load_guyana_regions()
-        display_names = {"Barina-Waini": "Barima-Waini"}
-        map_rows = regional.copy()
-        map_rows["map_region"] = map_rows["region"].replace({"Barima-Waini": "Barina-Waini"})
-        selected_name = map_rows.loc[map_rows["region_no"] == selected_region, "map_region"].iloc[0]
-        colors = ["#f97316", "#e85d04", "#d94801", "#c2410c", "#9a3412", "#7c2d12", "#525252", "#404040", "#262626", "#737373"]
-        figure = go.Figure(go.Choropleth(
-                geojson=geojson,
-                featureidkey="properties.shapeName",
-                locations=map_rows["map_region"],
-                z=map_rows[metric],
-                customdata=map_rows[["region_no", "region", metric]].to_numpy(),
-                colorscale=[[index / (len(colors) - 1), color] for index, color in enumerate(colors)],
-                marker_line_color="#ffffff",
-                marker_line_width=1.5,
-                hovertemplate="<b>Region %{customdata[0]} — %{customdata[1]}</b><br>" + map_metric_label(metric) + ": %{customdata[2]:,.0f}<extra></extra>",
-                showscale=False
+    geojson = load_guyana_regions()
+    map_rows = regional.copy()
+    map_rows["map_region"] = map_rows["region"].replace({"Barima-Waini": "Barina-Waini"})
+    figure = go.Figure()
+    for _, row in map_rows.iterrows():
+        region_color = metric_color(row[metric], metric)
+        figure.add_trace(go.Choropleth(
+            geojson=geojson,
+            featureidkey="properties.shapeName",
+            locations=[row["map_region"]],
+            z=[0.5],
+            zmin=0,
+            zmax=1,
+            colorscale=[[0, region_color], [1, region_color]],
+            customdata=[[int(row["region_no"]), row["region"], row[metric]]],
+            marker_line_color="#171717" if int(row["region_no"]) == selected_region else "#ffffff",
+            marker_line_width=3 if int(row["region_no"]) == selected_region else 1.5,
+            hovertemplate="<b>Region %{customdata[0]} — %{customdata[1]}</b><br>" + map_metric_label(metric) + ": %{customdata[2]:,.0f}<extra></extra>",
+            showscale=False,
+            name=f"Region {int(row['region_no'])}",
+            showlegend=False
         ))
-        figure.update_traces(selectedpoints=[map_rows.index[map_rows["map_region"] == selected_name].tolist()[0]])
-        figure.update_layout(
-                geo=dict(scope="south america", fitbounds="locations", showframe=False, showcoastlines=True, coastlinecolor="#171717", bgcolor="#ffffff"),
-                height=620,
-                margin=dict(l=0, r=0, t=0, b=0),
-                paper_bgcolor="#ffffff",
-                plot_bgcolor="#ffffff",
-                clickmode="event+select"
-        )
-        return figure
+    figure.update_layout(
+        geo=dict(scope="south america", fitbounds="locations", showframe=False, showcoastlines=True, coastlinecolor="#171717", showland=False, bgcolor="#ffffff"),
+        height=620,
+        margin=dict(l=0, r=0, t=0, b=0),
+        paper_bgcolor="#ffffff",
+        plot_bgcolor="#ffffff",
+        clickmode="event+select"
+    )
+    return figure
 
 def answer_question(q):
     top_alloc = regional.sort_values("allocated", ascending=False).iloc[0]
@@ -191,6 +194,8 @@ elif page == "Regional Map":
             index=0
         )
     with region_col:
+        if "selected_region_map_pending" in st.session_state:
+            st.session_state["selected_region_map"] = st.session_state.pop("selected_region_map_pending")
         if "selected_region_map" not in st.session_state:
             st.session_state["selected_region_map"] = 4
         selected = st.selectbox(
@@ -211,8 +216,17 @@ elif page == "Regional Map":
         if map_event and map_event.selection.points:
             clicked_region = int(map_event.selection.points[0]["customdata"][0])
             if clicked_region != selected:
-                st.session_state["selected_region_map"] = clicked_region
+                st.session_state["selected_region_map_pending"] = clicked_region
                 st.rerun()
+        st.markdown(
+            '<div style="display:flex;gap:12px;flex-wrap:wrap;margin-top:8px;">'
+            '<span style="font-size:12px;color:#2e9b67;font-weight:800;">■ Strong / high</span>'
+            '<span style="font-size:12px;color:#f2d17d;font-weight:800;">■ Moderate</span>'
+            '<span style="font-size:12px;color:#e7a83b;font-weight:800;">■ Watch</span>'
+            '<span style="font-size:12px;color:#c84b31;font-weight:800;">■ Pressure / delay</span>'
+            '</div>',
+            unsafe_allow_html=True
+        )
     with detail_col:
         row = regional[regional.region_no == selected].iloc[0]
         st.markdown(f"""
