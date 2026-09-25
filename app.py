@@ -1,12 +1,13 @@
 
 import streamlit as st
 import streamlit.components.v1 as components
+import altair as alt
 import pandas as pd
 import numpy as np
 from pathlib import Path
 import html
 
-st.set_page_config(page_title="NIOTA Housing Intelligence", page_icon="◆", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="NIOTA Ministry Of Housing Intelligence", page_icon="◆", layout="wide", initial_sidebar_state="expanded")
 
 BASE = Path(__file__).parent
 regional = pd.read_csv(BASE / "data" / "regional_housing_summary.csv")
@@ -14,21 +15,21 @@ schemes = pd.read_csv(BASE / "data" / "scheme_housing_summary.csv")
 
 st.markdown("""
 <style>
-.stApp {background: linear-gradient(180deg, #ffffff 0%, #f7f8fa 100%); color:#1f2933;}
+.stApp {background: linear-gradient(180deg, #ffffff 0%, #f1f2f3 100%); color:#171717;}
 .block-container {padding-top:1.3rem; max-width:1320px;}
-h1,h2,h3 {letter-spacing:-.03em; color:#1f2933;}
-.niota-label {color:#b88a2c; font-size:13px; font-weight:800; letter-spacing:.24em; text-transform:uppercase;}
+h1,h2,h3 {letter-spacing:-.03em; color:#171717;}
+.niota-label {color:#d95f02; font-size:13px; font-weight:800; letter-spacing:.24em; text-transform:uppercase;}
 .hero-title {font-size:50px; line-height:1.02; font-weight:850; letter-spacing:-.045em; margin:8px 0 4px;}
-.hero-sub {color:#6b7280; font-size:18px; max-width:980px;}
-.pill {display:inline-block; padding:6px 11px; border-radius:999px; background:#fff7e6; border:1px solid #f0deb7; color:#7a5614; font-weight:700; font-size:12px; margin-right:6px;}
+.hero-sub {color:#5f6368; font-size:18px; max-width:980px;}
+.pill {display:inline-block; padding:6px 11px; border-radius:999px; background:#fff1e8; border:1px solid #f4b183; color:#8b3d00; font-weight:700; font-size:12px; margin-right:6px;}
 .clean-card {background:#fff; border:1px solid #e9eaec; border-radius:18px; padding:18px; box-shadow:0 10px 28px rgba(31,41,51,.06);}
-.insight-card {background:linear-gradient(135deg,#fff 0%,#fff9eb 100%); border:1px solid #f0deb7; border-radius:18px; padding:20px; box-shadow:0 10px 28px rgba(184,138,44,.08);}
-.small-muted {color:#6b7280; font-size:13px;}
+.insight-card {background:linear-gradient(135deg,#fff 0%,#fff4ec 100%); border:1px solid #f4b183; border-radius:18px; padding:20px; box-shadow:0 10px 28px rgba(217,95,2,.08);}
+.small-muted {color:#5f6368; font-size:13px;}
 div[data-testid="stMetric"] {background:#fff; border:1px solid #e9eaec; border-radius:16px; padding:14px 16px; box-shadow:0 8px 22px rgba(31,41,51,.04);}
-.stTabs [data-baseweb="tab-list"] {gap:8px;}
-.stTabs [data-baseweb="tab"] {background:#fff; border:1px solid #e7e8ea; border-radius:999px; padding:9px 16px;}
-.stTabs [aria-selected="true"] {background:#1f2933 !important; color:#fff !important;}
-button[kind="primary"] {background:#1f2933 !important; border-color:#1f2933 !important;}
+section[data-testid="stSidebar"] {background:#171717; border-right:4px solid #d95f02;}
+section[data-testid="stSidebar"] * {color:#fff !important;}
+section[data-testid="stSidebar"] [data-testid="stRadio"] label {padding:8px 10px; border-radius:6px;}
+button[kind="primary"] {background:#171717 !important; border-color:#171717 !important;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -157,11 +158,17 @@ def answer_question(q):
     return f"Management should focus where high demand, backlog, and slow processing overlap. In this demo, Region {int(top_backlog.region_no)} has the largest backlog and Region {int(slowest.region_no)} has the slowest processing."
 
 st.markdown('<div class="niota-label">NIOTA LABS</div>', unsafe_allow_html=True)
-st.markdown('<div class="hero-title">Housing Intelligence</div>', unsafe_allow_html=True)
+st.markdown('<div class="hero-title">Ministry Of Housing Intelligence</div>', unsafe_allow_html=True)
 st.markdown('<div class="hero-sub">A clean demonstration of how housing applications, approvals, house lot allocations, backlog, and regional readiness can become decision intelligence.</div>', unsafe_allow_html=True)
 st.markdown('<span class="pill">Demo data only</span><span class="pill">Guyana Regions 1–10</span><span class="pill">6–7 minute walkthrough</span>', unsafe_allow_html=True)
 
-tabs = st.tabs(["Overview", "Regional Map", "Region 4 Deep Dive", "Ask NIOTA", "Management Brief"])
+st.sidebar.markdown('<div class="niota-label">NIOTA LABS</div>', unsafe_allow_html=True)
+st.sidebar.markdown("## Ministry Of Housing Intelligence")
+page = st.sidebar.radio(
+    "Navigate",
+    ["Overview", "Regional Map", "Region 4 Deep Dive", "Ask NIOTA", "Management Brief"],
+    label_visibility="collapsed"
+)
 
 total_app = regional["applications"].sum()
 total_approved = regional["approved"].sum()
@@ -171,7 +178,7 @@ approval_rate = total_approved / total_app * 100
 allocation_rate = total_allocated / total_app * 100
 avg_days = np.average(regional["avg_processing_days"], weights=regional["applications"])
 
-with tabs[0]:
+if page == "Overview":
     st.markdown("### Executive overview")
     c1, c2, c3, c4, c5, c6 = st.columns(6)
     c1.metric("Applications", fmt_int(total_app))
@@ -184,7 +191,15 @@ with tabs[0]:
     left, right = st.columns([1.35, .9])
     with left:
         st.markdown("#### Allocated lots by region")
-        st.bar_chart(regional.sort_values("allocated").set_index("region")[["allocated"]])
+        region_colors = ["#f97316", "#e85d04", "#d94801", "#c2410c", "#9a3412", "#7c2d12", "#525252", "#404040", "#262626", "#737373"]
+        chart_data = regional.sort_values("allocated").copy()
+        chart = alt.Chart(chart_data).mark_bar().encode(
+            x=alt.X("region:N", sort=None, title=None, axis=alt.Axis(labelAngle=0, labelFontWeight=700, labelColor="#171717")),
+            y=alt.Y("allocated:Q", title="Allocated lots"),
+            color=alt.Color("region:N", scale=alt.Scale(domain=chart_data["region"].tolist(), range=region_colors), legend=None),
+            tooltip=[alt.Tooltip("region:N", title="Region"), alt.Tooltip("allocated:Q", title="Allocated lots", format=",")]
+        ).properties(height=360)
+        st.altair_chart(chart, use_container_width=True)
     with right:
         top_region = regional.sort_values("allocated", ascending=False).iloc[0]
         backlog_region = regional.sort_values("pending_backlog", ascending=False).iloc[0]
@@ -198,7 +213,7 @@ with tabs[0]:
         </div>
         """, unsafe_allow_html=True)
 
-with tabs[1]:
+elif page == "Regional Map":
     st.markdown("### Guyana regional map")
     st.caption("Use the selector to change what the colors mean. Region names show directly on the map.")
     metric_choice = st.selectbox(
@@ -233,7 +248,7 @@ with tabs[1]:
         </div>
         """, unsafe_allow_html=True)
 
-with tabs[2]:
+elif page == "Region 4 Deep Dive":
     st.markdown("### Region 4 deep dive")
     st.caption("A closer look at Demerara-Mahaica, using illustrative area-level housing data.")
     r4 = schemes[schemes["region"] == "Demerara-Mahaica"].copy()
@@ -252,7 +267,7 @@ with tabs[2]:
         st.bar_chart(r4.sort_values("infrastructure_ready_pct").set_index("scheme_area")[["infrastructure_ready_pct"]])
     st.dataframe(r4[["scheme_area", "applications", "approved", "allocated", "pending_backlog", "avg_processing_days", "infrastructure_ready_pct", "note"]], use_container_width=True, hide_index=True)
 
-with tabs[3]:
+elif page == "Ask NIOTA":
     st.markdown("### Ask NIOTA")
     st.caption("Pre-tested executive questions keep the launch demo smooth and predictable.")
     q = st.selectbox("Choose a question", [
@@ -272,7 +287,7 @@ with tabs[3]:
         </div>
         """, unsafe_allow_html=True)
 
-with tabs[4]:
+else:
     st.markdown("### Management brief")
     top_alloc = regional.sort_values("allocated", ascending=False).iloc[0]
     top_backlog = regional.sort_values("pending_backlog", ascending=False).iloc[0]
